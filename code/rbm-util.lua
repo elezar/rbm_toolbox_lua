@@ -268,9 +268,10 @@ function rbmsetup(opts,train,semisup)
      rbm.generativestatistics = opts.generativestatistics or grads.generativestatistics
      rbm.generativegrads      = opts.generativegrads or grads.generativegrads
 
-     -- -
+     --
+     rbm.output_folder   = opts.folder or "."
      rbm.tempfile        = opts.tempfile or "temp_rbm.asc"
-     rbm.finalfile        = opts.finalfile or "final_rbm.asc"
+     rbm.finalfile       = opts.finalfile or "final_rbm.asc"
      rbm.isgpu           = opts.isgpu or 0
      rbm.precalctcwx     = opts.precalctcwx or 1
 

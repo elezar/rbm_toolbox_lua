@@ -24,6 +24,7 @@ end
 -- create the options
 if not opts then
 	cmd = torch.CmdLine()
+	cmd:option('-numepochs', 1, 'Number of epochs')
 	cmd:option('-folder', 'output', 'the folder to be used for output')
 	cmd:option('-n_hidden', 784, 'number of hidden units')
 	cmd:option('-datasetsize', 'full', 'small|full size of dataset')

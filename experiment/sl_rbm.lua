@@ -8,16 +8,15 @@ ProFi = require(codeFolder..'ProFi')
 require('paths')
 require('string')
 
-
+geometry = {28,28}
 
 function save_rbm_image(rbm, sample)
 	if sample == 1 or sample % 100 == 0 then
 		-- Output the rbm weights
-		local image_name = string.format("%s/rbm.W.epoch_%02d.sample_%d.png",
+		local image_name = string.format("%s/rbm.W.epoch_%02d.sample_%05d.png",
 			rbm.output_folder, rbm.currentepoch, sample)
-		local geometry = {32,32}
 
-		create_weight_image(rbm, geometry, image_name)
+		create_weight_image(rbm.W, geometry, image_name)
 	end
 end
 
@@ -26,7 +25,7 @@ end
 if not opts then
 	cmd = torch.CmdLine()
 	cmd:option('-folder', 'output', 'the folder to be used for output')
-	cmd:option('-n_hidden', 1024, 'number of hidden units')
+	cmd:option('-n_hidden', 784, 'number of hidden units')
 	cmd:option('-datasetsize', 'full', 'small|full size of dataset')
 	cmd:option('-image_name', 'demo.png', 'the filename with which the generated image should be saved')
 	opts = cmd:parse(arg or {})
@@ -37,7 +36,7 @@ torch.setdefaulttensortype('torch.FloatTensor')
 
 
 -- The supplied MNIST images are 32x32 pixels in size.
-geometry = {32,32}
+-- geometry = {32,32}
 
 -- Only load the small dataset to start with.
 if opts.datasetsize == 'full' then

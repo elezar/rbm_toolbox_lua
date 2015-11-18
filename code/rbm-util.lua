@@ -148,7 +148,7 @@ function initcrbm(m,n,inittype,std)
          M = math.max(m,n);
          interval_max = math.pow(M,-0.5);
          interval_min = -interval_max;
-         weights = torch.rand(m,n):mul(interval_max-interval_min):add(interval_min)
+         weights = torch.Tensor(m,n):uniform(interval_min,interval_min)
     elseif inittype == 'gauss' then
          weights = torch.randn(m,n) * math.pow(10,std)
 

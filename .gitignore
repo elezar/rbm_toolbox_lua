@@ -9,4 +9,4 @@ code/dataset-sigp.lua
 *.asc
 
 # Ignore the mnist-th7 dataset.
-examples/mnist-th7/
+*/mnist-th7/

@@ -29,41 +29,47 @@ function rbmtrain(rbm,train,val,semisup)
           best_val_err = rbm.err_val[rbm.currentepoch]
           rbm.err_recon_train = extendTensor(rbm, rbm.err_recon_train,rbm.numepochs)
           rbm.err_train = extendTensor(rbm,rbm.err_train,rbm.numepochs)
-          rbm.err_val = extendTensor(rbm,rbm.err_val,rbm.numepochs) 
-          best_rbm = cprbm(rbm)  
+          rbm.err_val = extendTensor(rbm,rbm.err_val,rbm.numepochs)
+          best_rbm = cprbm(rbm)
      end
 
      best_val_err = best_val_err or 1/0
      print("Best Val err",best_val_err)
      --print(y_train)
-     for epoch = rbm.currentepoch, rbm.numepochs do 
+     for epoch = rbm.currentepoch, rbm.numepochs do
       --print("epcoh",epoch)
           epoch_time = os.time()
           rbm.cur_err = torch.zeros(1)
           rbm.currentepoch = epoch
-          
+
           for i = 1, train:size() do  -- iter over samples
                --x_tr,y_tr,x_semi = getsamples(rbm,x_train,y_train,x_semisup,i)
-               
+
                if rbm.boost == 'none' then
                   train_sample = train:next()
-               else 
+               else
                   train_sample,skipped =train:nextboost()
                end
-               
+
+               -- Get the training image and categories.
                x_tr = train_sample[1]:view(1,-1)
                y_tr = train_sample[2]:view(1,-1)
+
+               if rbm.output then
+                  rbm.output(rbm,i)
+               end
+
                regularization.dropout(rbm)                          -- create dropout mask for hidden units
                calculategrads(rbm,x_tr,y_tr,x_semi,i)           -- calculates dW, dU, db, dc and dd
-               
-               -- update vW, vU, vb, vc and vd, formulae: vx = vX*mom + dX                    
+
+               -- update vW, vU, vb, vc and vd, formulae: vx = vX*mom + dX
                updateweights(rbm,i)
                --print(">>>>updateweights rbm.db: ",rbm.db)                                    -- updates W,U,b,c and d, formulae: X =  X + vX
-               
+
               if rbm.progress > 0 and (i % 100) == 0 then
                 xlua.progress(i, train:size())
               end
-               
+
                -- Force garbagecollector to collect
                collectgarbage()
 
@@ -71,7 +77,7 @@ function rbmtrain(rbm,train,val,semisup)
                  if i % rbm.csv == 1 then
                     sf = paths.concat('e'..epoch..'s'..i)
                     os.execute('mkdir -p ' .. sf)
-                    
+
                     writerbmtocsv(rbm,sf)
                     print('Saving to '..sf)
                  end
@@ -79,43 +85,43 @@ function rbmtrain(rbm,train,val,semisup)
 
 
              if rbm.boost ~= 'none' and skipped + i > train:size() then
-                -- we have passed once through the dataset 
+                -- we have passed once through the dataset
                 break
              end
-          end  -- end samples loop          
-          epoch_time = os.time() - epoch_time 
+          end  -- end samples loop
+          epoch_time = os.time() - epoch_time
 
           -- calc. train recon err and train pred error
           rbm.err_recon_train[epoch] = rbm.cur_err:div(rbm.n_samples)
-          
+
           if rbm.toprbm then
             local err,probs
-            
+
             err,probs = geterror(rbm,train)
-            rbm.err_train[epoch] = err 
+            rbm.err_train[epoch] = err
             if rbm.boost ~= 'none' then
               train:setyprobs(probs)
             end
           end
-          
+
           if val and rbm.toprbm then
               rbm.err_val[epoch] = geterror(rbm,val)
               if rbm.err_val[epoch] < best_val_err then
                   best_val_err = rbm.err_val[epoch]
                   patience = rbm.patience
-                  
+
                   if rbm.tempfile then
                     torch.save(rbm.tempfile,rbm)
                   end
                   best_rbm = cprbm(rbm)     -- save best weights
                   best = '***'
               else
-                  patience = patience - 1 
+                  patience = patience - 1
                   best = ''
               end
-          end         
+          end
           displayprogress(rbm,epoch,epoch_time,patience,best or '')
-          
+
 
 
           if patience < 0  then  -- Stop training
@@ -130,8 +136,8 @@ function rbmtrain(rbm,train,val,semisup)
           end
 
      end  -- end epoch loop
-     total_time = os.time() - total_time 
-     
+     total_time = os.time() - total_time
+
      if rbm.finalfile then
       torch.save(rbm.finalfile,rbm)
      end
@@ -142,15 +148,15 @@ end
 
 function calculategrads(rbm,x_tr,y_tr,x_semi,samplenum)
       -- add the grads to dW
-      local dW_gen, dU_gen, db_gen, dc_gen, dd_gen, vkx, tcwx 
+      local dW_gen, dU_gen, db_gen, dc_gen, dd_gen, vkx, tcwx
       local dW_dis, dU_dis, dc_dis, dd_dis, p_y_given_x
       local dW_semi, dU_semi,db_semi, dc_semi, dd_semi, y_semi
       local h0,h0_rnd, hk,vkx,vkx_rnd,vky_rnd
-      
+
       -- reset accumulators
       -- Assert correct formats
       assert(isMatrix(x_tr))
-      
+
       if rbm.toprbm then
         assert(isRowVec(y_tr))
       end
@@ -158,14 +164,14 @@ function calculategrads(rbm,x_tr,y_tr,x_semi,samplenum)
       if x_semi then
         assert(isMatrix(x_semi))
       end
-     
+
      if rbm.precalctcwx == 1 then
       tcwx = torch.mm( x_tr,rbm.W:t() ):add( rbm.c:t() )   -- precalc tcwx
      end
       -- GENERATIVE GRADS
       if rbm.alpha > 0 then
-        stat_gen = rbm.generativestatistics(rbm,x_tr,y_tr,tcwx)  
-        
+        stat_gen = rbm.generativestatistics(rbm,x_tr,y_tr,tcwx)
+
         --print(x_tr:type(),y_tr:type(),h0_gen:type(),hk_gen:type(),vkx_rnd_gen:type(),vky_rnd_gen:type())
         grads_gen = rbm.generativegrads(rbm,x_tr,y_tr,stat_gen)
         rbm.dW:add( grads_gen.dW:mul( rbm.alpha*rbm.learningrate ))
@@ -176,13 +182,13 @@ function calculategrads(rbm,x_tr,y_tr,x_semi,samplenum)
           rbm.dU:add( grads_gen.dU:mul( rbm.alpha*rbm.learningrate ))
           rbm.dd:add( grads_gen.dd:mul( rbm.alpha*rbm.learningrate ))
         end
-        rbm.cur_err:add( torch.sum(torch.add(x_tr,-stat_gen.vkx):pow(2)) ) 
+        rbm.cur_err:add( torch.sum(torch.add(x_tr,-stat_gen.vkx):pow(2)) )
 
 
         rbm.stat_gen = stat_gen
-        rbm.grads_gen = grads_gen 
+        rbm.grads_gen = grads_gen
       end
-     
+
    --   DISCRIMINATIVE GRADS
       if rbm.alpha < 1 then
         grads_dis, p_y_given_x  = rbm.discriminativegrads(rbm,x_tr,y_tr,tcwx)
@@ -191,13 +197,13 @@ function calculategrads(rbm,x_tr,y_tr,x_semi,samplenum)
         rbm.dc:add( grads_dis.dc:mul( (1-rbm.alpha)*rbm.learningrate ))
         rbm.dd:add( grads_dis.dd:mul( (1-rbm.alpha)*rbm.learningrate ))
       end
-      
+
       -- SEMISUPERVISED GRADS
       if rbm.beta > 0 then
               if rbm.precalctcwx == 1 then
                 tcwx_semi = torch.mm( x_semi,rbm.W:t() ):add( rbm.c:t() )   -- precalc tcwx
               end
-              
+
               if rbm.toprbm then
                 p_y_given_x = p_y_given_x or rbm.pygivenx(rbm,x_tr,tcwx_semi)
                 y_semi = samplevec(p_y_given_x,rbm.rand):resize(1,rbm.n_classes)
@@ -209,45 +215,45 @@ function calculategrads(rbm,x_tr,y_tr,x_semi,samplenum)
               grads_semi = rbm.generativegrads(x_semi,y_semi,stat_semi)
               print("FIX problem with PCD chains in semisupevised learning")
 
-              rbm.dW:add( grads_semi.dW:mul( rbm.beta*rbm.learningrate ))      
+              rbm.dW:add( grads_semi.dW:mul( rbm.beta*rbm.learningrate ))
               rbm.db:add( grads_semi.db:mul( rbm.beta*rbm.learningrate ))
               rbm.dc:add( grads_semi.dc:mul( rbm.beta*rbm.learningrate ))
-              
+
               if rbm.toprbm then
                 rbm.dU:add( grads_semi.dU:mul( rbm.beta*rbm.learningrate ))
-                rbm.dd:add( grads_semi.dd:mul( rbm.beta*rbm.learningrate ))   
-              end   
+                rbm.dd:add( grads_semi.dd:mul( rbm.beta*rbm.learningrate ))
+              end
       end
 end
 
 function displayprogress(rbm,epoch,epoch_time,patience,best)
      local strepoch, lrmom, err_recon, err_train, err_val, epoch_time_patience
-     
+
      strepoch   = string.format("%i/%i | ",epoch,rbm.numepochs)
      lrmom = string.format("LR: %f MOM %f | ",rbm.learningrate,rbm.momentum)
      err_recon  = string.format("ERROR: Recon %4.1f ",rbm.err_recon_train[epoch])
      err_train     = string.format("TR ERR: %f ", rbm.err_train[epoch] )
      err_val       = string.format("VAL ERR: %f |", rbm.err_val[epoch] )
      epoch_time_patience = string.format("time: %4.0f Patience %i",epoch_time,patience)
-     
-     outstr = strepoch .. lrmom .. err_recon .. err_train .. err_val .. epoch_time_patience 
+
+     outstr = strepoch .. lrmom .. err_recon .. err_train .. err_val .. epoch_time_patience
               .. best
      print(outstr)
-  
+
 end
 
 function updateweights(rbm,currentsample)
     -- update gradients
 
     -- fore every minibatch update weights
-    if (currentsample % rbm.batchsize) == 0 then 
+    if (currentsample % rbm.batchsize) == 0 then
         regularization.applyregularization(rbm)         -- APPLY REGULATIZATIO BEFORE WEIGHT UPDATE
-        if rbm.momentum > 0 then 
+        if rbm.momentum > 0 then
             rbm.vW:add( rbm.dW ):mul(rbm.momentum)
-            rbm.vb:add( rbm.db ):mul(rbm.momentum) 
-            rbm.vc:mad( rbm.dc ):mul(rbm.momentum) 
+            rbm.vb:add( rbm.db ):mul(rbm.momentum)
+            rbm.vc:mad( rbm.dc ):mul(rbm.momentum)
 
-            -- add momentum to dW 
+            -- add momentum to dW
             rbm.dW:add(rbm.vW)
             rbm.db:add(rbm.vb)
             rbm.dc:add(rbm.vc)
@@ -261,12 +267,12 @@ function updateweights(rbm,currentsample)
               rbm.dd:add(rbm.vd)
 
             end
-            
+
         end
 
         -- normalize weight update
         if rbm.batchsize > 1 then
-          rbm.dW:mul(1/rbm.batchsize)   
+          rbm.dW:mul(1/rbm.batchsize)
           rbm.db:mul(1/rbm.batchsize)
           rbm.dc:mul(1/rbm.batchsize)
 
@@ -307,7 +313,7 @@ function cprbm(rbm)
     return(newrbm)
 end
 
--- extend old tensor to 
+-- extend old tensor to
 function extendTensor(rbm,oldtensor,newsize,fill)
      if fill then fill = fill else fill = -1 end
      local newtensor
